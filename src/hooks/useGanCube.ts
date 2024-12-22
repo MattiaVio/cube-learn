@@ -1,64 +1,53 @@
-import { useState, useEffect, useRef } from 'react';
-import { connectGanCube, GanCubeConnection, GanCubeEvent, cubeTimestampLinearFit, now } from 'gan-web-bluetooth';
+import { useState, useRef } from 'react';
+import { connectGanCube, GanCubeConnection, GanCubeEvent } from 'gan-web-bluetooth';
 import * as THREE from 'three';
-import { experimentalSolve3x3x3IgnoringCenters } from 'cubing/search';
-import $ from 'jquery';
 
 interface CubeEventHandlers {
-    onGyro?: (quat: THREE.Quaternion) => void;
-    onMove?: () => void;
+    onGyro: (quaternion: THREE.Quaternion) => void;
+    onMove: (move: string) => void;
     onFacelets?: (facelets: string) => void;
     onDisconnect?: () => void;
 }
 
 export function useGanCube({ onGyro, onMove, onFacelets, onDisconnect }: CubeEventHandlers) {
     const [isConnected, setIsConnected] = useState(false);
-    const [cubeDetails, setCubeDetails] = useState<{ label: string; value: string | number }>({});
-    const [timerState, setTimerState] = useState<'IDLE' | 'READY' | 'RUNNING' | 'STOPPED'>('IDLE');
-    const [timerValue, setTimerValue] = useState<number>(0);
-
+    const [cubeDetails, setCubeDetails] = useState<any>({});
+    const [lastMoves, setLastMoves] = useState<string[]>([]);
     const connectionRef = useRef<GanCubeConnection | null>(null);
-    const timerRef = useRef<any>(null);
-
-    const HOME_ORIENTATION = new THREE.Quaternion().setFromEuler(
-        new THREE.Euler((15 * Math.PI) / 180, (-20 * Math.PI) / 180, 0)
-    );
+    const basisRef = useRef<THREE.Quaternion | null>(null);
 
     const handleCubeEvent = async (event: GanCubeEvent) => {
-        if (event.type === 'GYRO' && onGyro) {
+        if (event.type === 'GYRO') {
             const { x: qx, y: qy, z: qz, w: qw } = event.quaternion;
             const quat = new THREE.Quaternion(qx, qz, -qy, qw).normalize();
-            onGyro(quat);
-        } else if (event.type === 'MOVE' && onMove) {
-            onMove();
+
+            if (!basisRef.current) {
+                basisRef.current = quat.clone().conjugate();
+            }
+
+            const correctedQuat = quat.premultiply(basisRef.current);
+            onGyro(correctedQuat);
+        } else if (event.type === 'MOVE') {
+            const { move } = event;
+            onMove(move);
+            setLastMoves((prevMoves) => [...prevMoves.slice(-10), move]); // Keep last 10 moves
         } else if (event.type === 'FACELETS' && onFacelets) {
-            onFacelets(event.facelets);
+            if (event.facelets) {
+                onFacelets(event.facelets);
+            }
         } else if (event.type === 'DISCONNECT') {
             setIsConnected(false);
             onDisconnect?.();
         } else if (event.type === 'BATTERY') {
-            setCubeDetails((prev: any) => ({ ...prev, batteryLevel: event.batteryLevel + '%' }));
+            setCubeDetails((prev) => ({ ...prev, battery: `${event.batteryLevel}%` }));
         } else if (event.type === 'HARDWARE') {
             setCubeDetails({
-                hardwareName: event.hardwareName || '- n/a -',
-                hardwareVersion: event.hardwareVersion || '- n/a -',
-                softwareVersion: event.softwareVersion || '- n/a -',
-                productDate: event.productDate || '- n/a -',
-                gyroSupported: event.gyroSupported ? 'YES' : 'NO',
+                hardwareName: event.hardwareName,
+                hardwareVersion: event.hardwareVersion,
+                softwareVersion: event.softwareVersion,
+                productDate: event.productDate,
             });
         }
-    };
-
-    const startTimer = () => {
-        const startTime = now();
-        timerRef.current = setInterval(() => {
-            setTimerValue(now() - startTime);
-        }, 30);
-    };
-
-    const stopTimer = () => {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
     };
 
     const connectToCube = async () => {
@@ -66,48 +55,27 @@ export function useGanCube({ onGyro, onMove, onFacelets, onDisconnect }: CubeEve
             const connection = await connectGanCube();
             connection.events$.subscribe(handleCubeEvent);
             connectionRef.current = connection;
-
             setIsConnected(true);
 
-            // Request initial details
             await connection.sendCubeCommand({ type: 'REQUEST_HARDWARE' });
             await connection.sendCubeCommand({ type: 'REQUEST_BATTERY' });
             await connection.sendCubeCommand({ type: 'REQUEST_FACELETS' });
         } catch (error) {
-            console.error('Connection failed:', error);
+            console.error('Failed to connect to cube:', error);
         }
     };
 
     const disconnectFromCube = () => {
         connectionRef.current?.disconnect();
+        connectionRef.current = null;
         setIsConnected(false);
-    };
-
-    const resetTimerState = () => {
-        setTimerState('IDLE');
-        stopTimer();
-        setTimerValue(0);
-    };
-
-    const startCubeTimer = () => {
-        setTimerState('RUNNING');
-        startTimer();
-    };
-
-    const stopCubeTimer = () => {
-        setTimerState('STOPPED');
-        stopTimer();
     };
 
     return {
         isConnected,
         cubeDetails,
-        timerValue,
-        timerState,
+        lastMoves,
         connectToCube,
         disconnectFromCube,
-        startCubeTimer,
-        stopCubeTimer,
-        resetTimerState,
     };
 }

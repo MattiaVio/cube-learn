@@ -1,77 +1,72 @@
-import { useEffect, useState } from 'react';
-import { Box, Button, Container, Typography } from '@mui/material';
+import React, { useState, useMemo } from 'react';
+import { Container, Box, Typography, Button } from '@mui/material';
 import CubePlayer from './components/CubePlayer';
 import CubeTimer from './components/CubeTimer';
-import ConnectionPanel from './components/ConnectionPanel';
 import CubeDetails from './components/CubeDetails';
 import { useGanCube } from './hooks/useGanCube';
 import * as THREE from 'three';
-import { formatTimerValue } from './utils.ts';
 
 function App() {
-    const [cubeQuaternion, setCubeQuaternion] = useState(new THREE.Quaternion());
-    const {
-        isConnected,
-        cubeDetails,
-        timerValue,
-        connectToCube,
-        disconnectFromCube,
-        startCubeTimer,
-        stopCubeTimer,
-        resetTimerState,
-    } = useGanCube({
-        onGyro: (quat) => setCubeQuaternion(quat),
+    const [quaternionValues, setQuaternionValues] = useState({ w: 1, x: 0, y: 0, z: 0 });
+    const [moves, setMoves] = useState<string[]>([]);
+
+    const cubeQuaternionString = useMemo(() => {
+        return JSON.stringify(quaternionValues);
+    }, [quaternionValues]);
+
+    const { isConnected, cubeDetails, lastMoves, connectToCube, disconnectFromCube } = useGanCube({
+        onGyro: (quaternion) =>
+            setQuaternionValues({
+                w: quaternion.w.toFixed(3),
+                x: quaternion.x.toFixed(3),
+                y: quaternion.y.toFixed(3),
+                z: quaternion.z.toFixed(3),
+            }),
+        onMove: (move) => setMoves((prev) => [...prev, move]),
         onDisconnect: () => alert('Cube disconnected'),
     });
-
-    useEffect(() => {
-        console.log({
-            isConnected,
-            cubeDetails,
-            timerValue,
-            connectToCube,
-            disconnectFromCube,
-            startCubeTimer,
-            stopCubeTimer,
-            resetTimerState,
-        });
-    }, [isConnected]);
 
     return (
         <Container>
             <Box textAlign="center" mt={4}>
                 <Typography variant="h4" mb={2}>
-                    GAN Cube App with React & Material-UI
+                    GAN Cube App
                 </Typography>
 
-                {/* Connection Panel */}
-                <ConnectionPanel
-                    isConnected={isConnected}
-                    onConnect={connectToCube}
-                    onDisconnect={disconnectFromCube}
-                />
+                {/* Connection Buttons */}
+                <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={connectToCube}
+                    disabled={isConnected}
+                    style={{ marginRight: '10px' }}
+                >
+                    Connect
+                </Button>
+                <Button variant="contained" color="secondary" onClick={disconnectFromCube} disabled={!isConnected}>
+                    Disconnect
+                </Button>
 
-                {/* Cube Player */}
-                <CubePlayer cubeQuaternion={cubeQuaternion} />
+                {/* Cube Display */}
+                <CubePlayer cubeQuaternionString={cubeQuaternionString} moves={moves} />
 
-                {/* Timer */}
-                <CubeTimer timerValue={formatTimerValue(timerValue)} timerColor={timerValue > 0 ? '#0f0' : '#999'} />
+                {/* Moves List */}
+                <Box mt={2}>
+                    <Typography variant="h6">Last Moves:</Typography>
+                    <ul>
+                        {lastMoves.map((move, index) => (
+                            <li key={index}>{move}</li>
+                        ))}
+                    </ul>
+                </Box>
 
                 {/* Cube Details */}
-                <CubeDetails details={Object.entries(cubeDetails).map(([key, value]) => ({ label: key, value }))} />
-
-                {/* Timer Control Buttons */}
-                <Box mt={2}>
-                    <Button variant="contained" color="primary" onClick={startCubeTimer} disabled={!isConnected}>
-                        Start Timer
-                    </Button>
-                    <Button variant="contained" color="secondary" onClick={stopCubeTimer} disabled={!isConnected}>
-                        Stop Timer
-                    </Button>
-                    <Button variant="outlined" onClick={resetTimerState}>
-                        Reset Timer
-                    </Button>
-                </Box>
+                <CubeDetails
+                    details={Object.entries(cubeDetails).map(([key, value]) => ({
+                        label: key,
+                        value,
+                    }))}
+                />
             </Box>
         </Container>
     );

@@ -1,29 +1,23 @@
-import React, { useEffect, useRef } from 'react';
-import { TwistyPlayer } from 'cubing/twisty';
-import * as THREE from 'three';
-
-const SOLVED_STATE = 'UUUUUUUUURRRRRRRRRFFFFFFFFFDDDDDDDDDLLLLLLLLLBBBBBBBBB';
+import { memo } from 'react';
+import useTwistyPlayer from './useTwistyPlayer';
 
 interface CubePlayerProps {
-    cubeQuaternion: THREE.Quaternion;
+    cubeQuaternionString: string;
+    moves: string[];
 }
 
-export default function CubePlayer({ cubeQuaternion }: CubePlayerProps) {
-    const cubeRef = useRef<HTMLDivElement>(null);
-    const twistyPlayer = useRef<TwistyPlayer | null>(null);
+const CubePlayer = ({ cubeQuaternionString, moves }: CubePlayerProps) => {
+    const { cubeRef, resetCubeState, resetCubeGyro } = useTwistyPlayer({ moves, cubeQuaternionString });
 
-    useEffect(() => {
-        twistyPlayer.current = new TwistyPlayer({
-            puzzle: '3x3x3',
-            visualization: 'PG3D',
-            background: 'none',
-            controlPanel: 'none',
-        });
+    return (
+        <div>
+            <div ref={cubeRef} style={{ width: '100%', height: '400px' }} />
+            <div className="controls">
+                <button onClick={resetCubeState}>Reset State</button>
+                <button onClick={resetCubeGyro}>Reset Gyro</button>
+            </div>
+        </div>
+    );
+};
 
-        if (cubeRef.current) {
-            cubeRef.current.appendChild(twistyPlayer.current);
-        }
-    }, []);
-
-    return <div ref={cubeRef} style={{ width: '100%', height: '400px' }} />;
-}
+export default memo(CubePlayer);
